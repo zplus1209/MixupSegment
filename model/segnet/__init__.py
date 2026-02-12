@@ -1,1 +1,0 @@
-from .segnet import SegNet

@@ -25,15 +25,9 @@ from models import ResNet50UNet, get_model
 from utils import (
     SegmentationMixup, MixupWithUnlabeled,
     SegmentationMetrics, CombinedLoss,
-    plot_metrics_comparison
+    plot_metrics_comparison, ExperimentManager
 )
 from config import ABLATION_EXPERIMENTS, TRAIN_CONFIG, RESULTS_ROOT, VISUALIZATIONS_DIR
-
-try:
-    from utils import ExperimentManager
-    USE_V2 = True
-except ImportError:
-    USE_V2 = False
 
 
 class AblationTrainer:
@@ -336,13 +330,10 @@ def main():
     parser = argparse.ArgumentParser(description='Ablation Study')
     parser.add_argument('--experiment_name', type=str, default=None, help='Experiment name')
     args = parser.parse_args()
-    
-    experiment_manager = None
-    
-    if USE_V2 and args.experiment_name:
-        experiment_manager = ExperimentManager('ablation_study', experiment_name=args.experiment_name)
-        print(f"Using V2.0 Experiment Manager: {args.experiment_name}")
-        experiment_manager.update_status('running')
+
+    experiment_manager = ExperimentManager('ablation_study', experiment_name=args.experiment_name)
+    print(f"Using Experiment Manager: {args.experiment_name}")
+    experiment_manager.update_status('running')
     
     try:
         results, df = run_ablation_study()

@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
+from torchvision.models import ResNet50_Weights
 
 from config import MODEL_CONFIG
 
@@ -61,7 +62,7 @@ class ResNet50UNet(nn.Module):
         super().__init__()
         
         # ResNet50 encoder
-        resnet = models.resnet50(pretrained=pretrained)
+        resnet = models.resnet50(weights=ResNet50_Weights.DEFAULT)
         
         # Encoder layers
         self.encoder1 = nn.Sequential(

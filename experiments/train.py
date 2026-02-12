@@ -21,18 +21,10 @@ from models import ResNet50UNet
 from utils import (
     SegmentationMixup, MixupWithUnlabeled,
     SegmentationMetrics, CombinedLoss,
-    visualize_batch, plot_training_history
+    visualize_batch, plot_training_history,
+    ExperimentManager
 )
-from config import TRAIN_CONFIG, CHECKPOINTS_DIR, LOGS_DIR, VISUALIZATIONS_DIR
-
-# Try to import V2 modules, fallback to V1 if not available
-try:
-    from utils import ExperimentManager
-    from config_v2 import get_experiment_dirs
-    USE_V2 = True
-except ImportError:
-    USE_V2 = False
-    print("Warning: V2 modules not available, using V1 mode")
+from config import TRAIN_CONFIG, CHECKPOINTS_DIR, LOGS_DIR, VISUALIZATIONS_DIR, get_experiment_dirs
 
 
 class Trainer:
@@ -351,25 +343,23 @@ def main():
     args = parser.parse_args()
     
     # Setup experiment manager if using V2
-    experiment_manager = None
-    if USE_V2 and args.experiment_name:
-        from utils import ExperimentManager
-        experiment_manager = ExperimentManager('training', experiment_name=args.experiment_name)
+
+    experiment_manager = ExperimentManager('training', experiment_name=args.experiment_name)
         
-        # Update directories to use experiment-specific paths
-        global CHECKPOINTS_DIR, LOGS_DIR, VISUALIZATIONS_DIR
-        exp_dirs = experiment_manager.exp_dir
-        CHECKPOINTS_DIR = exp_dirs / 'checkpoints'
-        LOGS_DIR = exp_dirs / 'logs'
-        VISUALIZATIONS_DIR = exp_dirs / 'visualizations'
+    # Update directories to use experiment-specific paths
+    global CHECKPOINTS_DIR, LOGS_DIR, VISUALIZATIONS_DIR
+    exp_dirs = experiment_manager.exp_dir
+    CHECKPOINTS_DIR = exp_dirs / 'checkpoints'
+    LOGS_DIR = exp_dirs / 'logs'
+    VISUALIZATIONS_DIR = exp_dirs / 'visualizations'
         
-        # Ensure directories exist
-        CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
-        LOGS_DIR.mkdir(parents=True, exist_ok=True)
-        VISUALIZATIONS_DIR.mkdir(parents=True, exist_ok=True)
+    # Ensure directories exist
+    CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    VISUALIZATIONS_DIR.mkdir(parents=True, exist_ok=True)
         
-        print(f"Using V2.0 Experiment Manager: {args.experiment_name}")
-        print(f"Results will be saved to: {exp_dirs}")
+    print(f"Using Experiment Manager: {args.experiment_name}")
+    print(f"Results will be saved to: {exp_dirs}")
     
     # Update config
     config = TRAIN_CONFIG.copy()

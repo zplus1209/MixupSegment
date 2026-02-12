@@ -18,16 +18,10 @@ from data import get_dataloaders
 from models import ResNet50UNet, get_all_benchmark_models, get_model_info, count_parameters
 from utils import (
     SegmentationMetrics, CombinedLoss,
-    plot_metrics_comparison, create_comparison_table
+    plot_metrics_comparison, create_comparison_table,
+    ExperimentManager
 )
 from config import CHECKPOINTS_DIR, VISUALIZATIONS_DIR, RESULTS_ROOT
-
-# Try to import V2 modules
-try:
-    from utils import ExperimentManager
-    USE_V2 = True
-except ImportError:
-    USE_V2 = False
 
 
 class BenchmarkEvaluator:
@@ -215,13 +209,10 @@ def main():
     parser.add_argument('--experiment_name', type=str, default=None, help='Experiment name (V2.0 feature)')
     args = parser.parse_args()
     
-    # Setup experiment manager if using V2
-    experiment_manager = None
-    
-    if USE_V2 and args.experiment_name:
-        experiment_manager = ExperimentManager('benchmark_comparison', experiment_name=args.experiment_name)
-        print(f"Using V2.0 Experiment Manager: {args.experiment_name}")
-        experiment_manager.update_status('running')
+
+    experiment_manager = ExperimentManager('benchmark_comparison', experiment_name=args.experiment_name)
+    print(f"Using Experiment Manager: {args.experiment_name}")
+    experiment_manager.update_status('running')
     
     try:
         results, df = run_benchmark_comparison()

@@ -13,6 +13,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 import json
 import pandas as pd
+import matplotlib.pyplot as plt
 
 sys.path.append(str(Path(__file__).parent.parent))
 

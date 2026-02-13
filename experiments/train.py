@@ -317,7 +317,7 @@ class Trainer:
         """Save model checkpoint"""
         checkpoint = {
             'epoch': epoch,
-            'model_state_dict': self.model.state_dict(),
+            'model_name': self.config.get('model_name', 'ResNet50-UNet (Ours)'),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'scheduler_state_dict': self.scheduler.state_dict(),
             'best_val_dice': self.best_val_dice,
@@ -339,7 +339,8 @@ def main():
     parser.add_argument('--use_unlabeled', action='store_true', default=TRAIN_CONFIG['use_unlabeled'])
     parser.add_argument('--resume', type=str, help='Path to checkpoint to resume from')
     parser.add_argument('--experiment_name', type=str, default=None, help='Experiment name (V2.0 feature)')
-    
+    parser.add_argument('--model_name', type=str, default='ResNet50-UNet (Ours)', help='Model name stored in checkpoint metadata')
+
     args = parser.parse_args()
     
     # Setup experiment manager if using V2
@@ -369,6 +370,7 @@ def main():
     config['mixup_alpha'] = args.mixup_alpha
     config['use_mixup'] = args.use_mixup
     config['use_unlabeled'] = args.use_unlabeled
+    config['model_name'] = args.model_name
     
     # Get dataloaders
     train_loader, val_loader, test_loader, unlabeled_loader = get_dataloaders(

@@ -1,3 +1,7 @@
+"""
+Train benchmark segmentation models and save checkpoints
+compatible with experiments/benchmark_comparison.py.
+"""
 import sys
 import argparse
 from pathlib import Path
@@ -6,11 +10,19 @@ import torch
 sys.path.append(str(Path(__file__).parent.parent))
 
 from data import get_dataloaders
+import config as config_module
 from models import get_all_benchmark_models
 import experiments.train as train_module
 from experiments.train import Trainer
 from utils import ExperimentManager
 from config import TRAIN_CONFIG
+
+
+def _resize_for_model(model_name: str):
+    """Return input resize (H, W) for each model."""
+    if 'swin' in model_name.lower():
+        return (224, 224)
+    return (384, 384)
 
 
 def main():
@@ -28,7 +40,6 @@ def main():
     em = ExperimentManager('benchmark_training', experiment_name=args.experiment_name)
     em.update_status('running')
 
-    train_loader, val_loader, _, unlabeled_loader = get_dataloaders(batch_size=args.batch_size)
     models = get_all_benchmark_models()
 
     only_set = None
@@ -54,6 +65,13 @@ def main():
         train_module.CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
         train_module.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         train_module.VISUALIZATIONS_DIR.mkdir(parents=True, exist_ok=True)
+
+        resize = _resize_for_model(model_name)
+        config_module.AUGMENTATION_CONFIG['train']['resize'] = resize
+        config_module.AUGMENTATION_CONFIG['val']['resize'] = resize
+        print(f'Input resize for {model_name}: {resize}')
+
+        train_loader, val_loader, _, unlabeled_loader = get_dataloaders(batch_size=args.batch_size)
 
         cfg = TRAIN_CONFIG.copy()
         cfg.update({

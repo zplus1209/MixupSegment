@@ -119,18 +119,37 @@ EVAL_CONFIG = {
 
 BENCHMARK_MODELS = {
     'unet': {
-        'encoder': 'resnet34',
+        'display_name': 'U-Net',
+        'encoder': 'resnet50',
+        'encoder_weights': 'imagenet',
+    },
+    'unetplusplus': {
+        'display_name': 'U-Net++',
+        'encoder': 'resnet50',
+        'encoder_weights': 'imagenet',
+    },
+    'resunetplusplus': {
+        'display_name': 'ResU-Net++',
+        'encoder': 'resnet50',
+        'encoder_weights': 'imagenet',
+    },
+    'segformer': {
+        'display_name': 'SegFormer',
+        'encoder': 'mit_b2',
+        'encoder_weights': 'imagenet',
+    },
+    'swin_unet': {
+        'display_name': 'Swin Transformer',
+        'encoder': 'tu-swin_base_patch4_window7_224',
         'encoder_weights': 'imagenet',
     },
     'deeplabv3plus': {
+        'display_name': 'DeepLabV3+',
         'encoder': 'resnet50',
         'encoder_weights': 'imagenet',
     },
     'fpn': {
-        'encoder': 'resnet50',
-        'encoder_weights': 'imagenet',
-    },
-    'pspnet': {
+        'display_name': 'FPN',
         'encoder': 'resnet50',
         'encoder_weights': 'imagenet',
     }
@@ -138,30 +157,47 @@ BENCHMARK_MODELS = {
 
 
 ABLATION_EXPERIMENTS = {
-    'baseline': {
+    'mixup_off': {
         'use_mixup': False,
         'use_unlabeled': False,
+        'mixup_alpha': 0.4,
+        'mixup_prob': 0.5,
         'encoder': 'resnet50',
     },
-    'with_mixup': {
+    'mixup_on': {
         'use_mixup': True,
         'use_unlabeled': False,
+        'mixup_alpha': 0.4,
+        'mixup_prob': 0.5,
         'encoder': 'resnet50',
     },
-    'with_unlabeled': {
-        'use_mixup': False,
-        'use_unlabeled': True,
-        'encoder': 'resnet50',
-    },
-    'full_model': {
+    'encoder_vgg16': {
         'use_mixup': True,
-        'use_unlabeled': True,
+        'use_unlabeled': False,
+        'mixup_alpha': 0.4,
+        'mixup_prob': 0.5,
+        'encoder': 'vgg16',
+    },
+    'encoder_resnet50': {
+        'use_mixup': True,
+        'use_unlabeled': False,
+        'mixup_alpha': 0.4,
+        'mixup_prob': 0.5,
         'encoder': 'resnet50',
     },
-    'resnet34_encoder': {
+    'encoder_inceptionv4': {
         'use_mixup': True,
-        'use_unlabeled': True,
-        'encoder': 'resnet34',
+        'use_unlabeled': False,
+        'mixup_alpha': 0.4,
+        'mixup_prob': 0.5,
+        'encoder': 'inceptionv4',
+    },
+    'encoder_efficientnetb0': {
+        'use_mixup': True,
+        'use_unlabeled': False,
+        'mixup_alpha': 0.4,
+        'mixup_prob': 0.5,
+        'encoder': 'efficientnet-b0',
     },
 }
 

@@ -5,6 +5,7 @@ Sử dụng ResNet50 pretrained encoder kết hợp với UNet decoder
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import segmentation_models_pytorch as smp
 from torchvision import models
 from torchvision.models import ResNet50_Weights
 
@@ -139,12 +140,24 @@ class ResNet50UNet(nn.Module):
 
 
 def get_model(encoder='resnet50', pretrained=True, in_channels=3, out_channels=1):
-    """Factory function to create model"""
+    """Factory function to create segmentation model."""
     if encoder == 'resnet50':
         return ResNet50UNet(in_channels, out_channels, pretrained)
-    else:
-        raise ValueError(f"Encoder {encoder} not supported")
 
+    # SMP does not support `inceptionv3`; map to closest available backbone.
+    encoder_alias = {
+        'inceptionv3': 'inceptionv4',
+    }
+    resolved_encoder = encoder_alias.get(encoder, encoder)
+
+    encoder_weights = 'imagenet' if pretrained else None
+    return smp.Unet(
+        encoder_name=resolved_encoder,
+        encoder_weights=encoder_weights,
+        in_channels=in_channels,
+        classes=out_channels,
+        activation='sigmoid'
+    )
 
 def count_parameters(model):
     """Count trainable parameters"""

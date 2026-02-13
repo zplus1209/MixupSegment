@@ -1,11 +1,7 @@
 """
-Ablation Study Experiments
-Đánh giá ảnh hưởng của từng component:
-1. Baseline (no mixup, no unlabeled)
-2. With Mixup
-3. With Unlabeled data
-4. Full model (Mixup + Unlabeled)
-5. Different encoder (ResNet34)
+Focus on two main questions:
+1. Impact of ResNet50 encoder (vs other encoders)
+2. Impact of Mixup augmentation
 """
 import os
 import sys
@@ -21,11 +17,12 @@ import pandas as pd
 sys.path.append(str(Path(__file__).parent.parent))
 
 from data import get_dataloaders
-from models import ResNet50UNet, get_model
+from models import get_model
 from utils import (
     SegmentationMixup, MixupWithUnlabeled,
     SegmentationMetrics, CombinedLoss,
-    plot_metrics_comparison, ExperimentManager
+    plot_metrics_comparison, ExperimentManager,
+    visualize_batch
 )
 from config import ABLATION_EXPERIMENTS, TRAIN_CONFIG, RESULTS_ROOT, VISUALIZATIONS_DIR
 
@@ -58,11 +55,11 @@ class AblationTrainer:
         # Mixup
         if config.get('use_mixup', False):
             if config.get('use_unlabeled', False) and unlabeled_loader:
-                self.mixup = MixupWithUnlabeled(alpha=0.4, prob=0.5)
+                self.mixup = MixupWithUnlabeled(alpha=config.get('mixup_alpha', 0.4), prob=config.get('mixup_prob', 0.5))
                 self.use_unlabeled = True
                 self.unlabeled_iter = iter(unlabeled_loader)
             else:
-                self.mixup = SegmentationMixup(alpha=0.4, prob=0.5)
+                self.mixup = SegmentationMixup(alpha=config.get('mixup_alpha', 0.4), prob=config.get('mixup_prob', 0.5))
                 self.use_unlabeled = False
                 self.unlabeled_iter = None
         else:
@@ -96,9 +93,9 @@ class AblationTrainer:
                 )
             elif self.mixup:
                 images, masks = self.mixup(images, masks, training=True)
-                is_labeled = torch.ones(images.size(0), dtype=torch.bool)
+                is_labeled = torch.ones(images.size(0), dtype=torch.bool, device=self.device)
             else:
-                is_labeled = torch.ones(images.size(0), dtype=torch.bool)
+                is_labeled = torch.ones(images.size(0), dtype=torch.bool, device=self.device)
             
             # Forward
             outputs = self.model(images)
@@ -146,6 +143,22 @@ class AblationTrainer:
         avg_loss = total_loss / len(self.val_loader)
         return avg_loss, metrics.get_metrics()
     
+    @torch.no_grad()
+    def save_visualization(self, save_path: Path, num_samples=4):
+        self.model.eval()
+        first_batch = next(iter(self.val_loader))
+        images = first_batch['image'].to(self.device)
+        masks = first_batch['mask'].to(self.device)
+        preds = self.model(images)
+        fig = visualize_batch(
+            images.detach().cpu(),
+            masks.detach().cpu(),
+            preds.detach().cpu(),
+            num_samples=min(num_samples, images.size(0)),
+            save_path=save_path
+        )
+        plt.close(fig)
+
     def train(self, num_epochs=30):
         """Train for specified epochs"""
         print(f"Training with config: {self.config}")
@@ -170,9 +183,7 @@ class AblationTrainer:
             
             # Print progress
             if epoch % 5 == 0 or epoch == 1:
-                print(f"  Epoch {epoch}/{num_epochs}: "
-                      f"Val Dice={val_metrics['dice']:.4f}, "
-                      f"Best={self.best_val_dice:.4f}")
+                print(f"  Epoch {epoch}/{num_epochs}: Val Dice={val_metrics['dice']:.4f}, Best={self.best_val_dice:.4f}")
         
         return best_metrics
 
@@ -181,7 +192,7 @@ def run_ablation_study():
     """Run complete ablation study"""
     print("="*80)
     print("ABLATION STUDY")
-    print("Evaluating impact of each component")
+    print("Evaluating impact of ResNet50 encoder and Mixup")
     print("="*80)
     
     # Get dataloaders
@@ -191,40 +202,45 @@ def run_ablation_study():
     results = {}
     
     # Run experiments
+    ablation_dir = RESULTS_ROOT / 'ablation_study'
+    ablation_dir.mkdir(parents=True, exist_ok=True)
+    vis_dir = ablation_dir / 'sample_predictions'
+    vis_dir.mkdir(parents=True, exist_ok=True)
+
+
     for i, (exp_name, exp_config) in enumerate(ABLATION_EXPERIMENTS.items(), start=1):
         print(f"\n[{i}/{len(ABLATION_EXPERIMENTS)}] Running: {exp_name}")
         print("-" * 80)
-        
-        # Create model based on encoder
-        encoder = exp_config.get('encoder', 'resnet50')
-        if encoder == 'resnet50':
-            model = ResNet50UNet(in_channels=3, out_channels=1, pretrained=True)
-        else:
-            # For other encoders, we'd need to implement or use smp
-            print(f"  Using ResNet50 (other encoders not implemented in custom model)")
-            model = ResNet50UNet(in_channels=3, out_channels=1, pretrained=True)
-        
-        # Create trainer
-        trainer = AblationTrainer(
-            model, train_loader, val_loader, unlabeled_loader, exp_config
-        )
-        
-        # Train
-        best_metrics = trainer.train(num_epochs=30)  # Reduced epochs for ablation
-        
-        # Store results
-        results[exp_name] = best_metrics
-        
-        print(f"\nResults for {exp_name}:")
-        print(f"  Best Dice: {best_metrics['dice']:.4f} (epoch {best_metrics['epoch']})")
-        print(f"  IoU: {best_metrics['iou']:.4f}")
-        print(f"  F1: {best_metrics['f1']:.4f}")
+
+        try:
+            encoder = exp_config.get('encoder', 'resnet50')
+            model = get_model(encoder=encoder, pretrained=True, in_channels=3, out_channels=1)
+
+            trainer = AblationTrainer(
+                model, train_loader, val_loader, unlabeled_loader, exp_config
+            )
+
+            best_metrics = trainer.train(num_epochs=exp_config.get('num_epochs', 30))
+            trainer.save_visualization(vis_dir / f'{exp_name}_predictions.png')
+
+            best_metrics['encoder'] = encoder
+            best_metrics['use_mixup'] = exp_config.get('use_mixup', False)
+            best_metrics['use_unlabeled'] = exp_config.get('use_unlabeled', False)
+            best_metrics['mixup_alpha'] = exp_config.get('mixup_alpha', TRAIN_CONFIG.get('mixup_alpha', 0.4))
+            best_metrics['mixup_prob'] = exp_config.get('mixup_prob', TRAIN_CONFIG.get('mixup_prob', 0.5))
+
+            results[exp_name] = best_metrics
+
+            print(f"\nResults for {exp_name}:")
+            print(f"  Best Dice: {best_metrics['dice']:.4f} (epoch {best_metrics['epoch']})")
+            print(f"  IoU: {best_metrics['iou']:.4f}")
+            print(f"  F1: {best_metrics['f1']:.4f}")
+        except Exception as exc:
+            print(f"Skipping {exp_name} due to error: {exc}")
+
+    if not results:
+        raise RuntimeError('No ablation experiment completed successfully.')
     
-    # Save results
-    ablation_dir = RESULTS_ROOT / 'ablation_study'
-    ablation_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Save JSON
     results_json = ablation_dir / 'ablation_results.json'
     with open(results_json, 'w') as f:
         json.dump(results, f, indent=4)
@@ -239,6 +255,9 @@ def run_ablation_study():
     print(df[['dice', 'iou', 'precision', 'recall', 'f1']])
     
     # Plot comparison
+    available_cols = [c for c in ['dice', 'iou', 'precision', 'recall', 'f1', 'encoder', 'use_mixup', 'use_unlabeled', 'mixup_alpha'] if c in df.columns]
+    print(df[available_cols])
+
     print("\nGenerating comparison plots...")
     plot_metrics_comparison(
         results,
@@ -263,63 +282,61 @@ def generate_ablation_report(results, save_dir):
     with open(report_path, 'w') as f:
         f.write("# Ablation Study Report\n\n")
         f.write("## Objective\n\n")
-        f.write("Evaluate the contribution of each component:\n")
-        f.write("- Mixup augmentation\n")
-        f.write("- Unlabeled data utilization\n")
-        f.write("- Encoder architecture\n\n")
+        f.write("Evaluate two major factors:\n")
+        f.write("- Impact of ResNet50 encoder\n")
+        f.write("- Impact of Mixup augmentation\n\n")
         
         f.write("## Experimental Setup\n\n")
         f.write("- Base Model: ResNet50-UNet\n")
         f.write("- Training epochs: 30 (reduced for ablation)\n")
         f.write("- Batch size: 8\n")
         f.write("- Learning rate: 1e-4\n\n")
-        
+
+        f.write("## Commands Used (reproducibility)\n\n")
+        f.write("```bash\n")
+        f.write("python experiments/ablation_study.py --experiment_name ablation_main\n")
+        f.write("python experiments/train.py --num_epochs 100 --batch_size 8 --use_mixup --mixup_alpha 0.4\n")
+        f.write("python experiments/train.py --num_epochs 100 --batch_size 8 --use_mixup --mixup_alpha 0.4 --use_unlabeled\n")
+        f.write("```\n\n")
+
         f.write("## Results\n\n")
-        f.write("| Experiment | Mixup | Unlabeled | Encoder | Dice | IoU | F1 |\n")
-        f.write("|------------|-------|-----------|---------|------|-----|----|\n")
-        
+        f.write("| Experiment | Mixup | Unlabeled | mixup_alpha | Encoder | Dice | IoU | Precision | Recall | F1 |\n")
+        f.write("|------------|-------|-----------|-------------|---------|------|-----|-----------|--------|----|\n")
+
         for exp_name, metrics in results.items():
-            config = ABLATION_EXPERIMENTS[exp_name]
-            mixup = '✓' if config.get('use_mixup', False) else '✗'
-            unlabeled = '✓' if config.get('use_unlabeled', False) else '✗'
-            encoder = config.get('encoder', 'resnet50')
+            mixup = '✓' if metrics.get('use_mixup', False) else '✗'
+            unlabeled = '✓' if metrics.get('use_unlabeled', False) else '✗'
+            encoder = metrics.get('encoder', 'resnet50')
+            alpha = metrics.get('mixup_alpha', '-')
             
-            f.write(f"| {exp_name} | {mixup} | {unlabeled} | {encoder} | ")
-            f.write(f"{metrics['dice']:.4f} | {metrics['iou']:.4f} | {metrics['f1']:.4f} |\n")
-        
+            f.write(f"| {exp_name} | {mixup} | {unlabeled} | {alpha} | {encoder} | ")
+            f.write(f"{metrics['dice']:.4f} | {metrics['iou']:.4f} | {metrics['precision']:.4f} | {metrics['recall']:.4f} | {metrics['f1']:.4f} |\n")
+            
         f.write("\n## Analysis\n\n")
         
-        # Compare baseline with others
-        baseline = results.get('baseline', {})
-        with_mixup = results.get('with_mixup', {})
-        with_unlabeled = results.get('with_unlabeled', {})
-        full_model = results.get('full_model', {})
-        
-        if baseline and with_mixup:
-            improvement = (with_mixup['dice'] - baseline['dice']) / baseline['dice'] * 100
-            f.write(f"### Impact of Mixup\n")
-            f.write(f"- Baseline Dice: {baseline['dice']:.4f}\n")
-            f.write(f"- With Mixup Dice: {with_mixup['dice']:.4f}\n")
-            f.write(f"- Improvement: {improvement:+.2f}%\n\n")
-        
-        if baseline and with_unlabeled:
-            improvement = (with_unlabeled['dice'] - baseline['dice']) / baseline['dice'] * 100
-            f.write(f"### Impact of Unlabeled Data\n")
-            f.write(f"- Baseline Dice: {baseline['dice']:.4f}\n")
-            f.write(f"- With Unlabeled Dice: {with_unlabeled['dice']:.4f}\n")
-            f.write(f"- Improvement: {improvement:+.2f}%\n\n")
-        
-        if baseline and full_model:
-            improvement = (full_model['dice'] - baseline['dice']) / baseline['dice'] * 100
-            f.write(f"### Full Model vs Baseline\n")
-            f.write(f"- Baseline Dice: {baseline['dice']:.4f}\n")
-            f.write(f"- Full Model Dice: {full_model['dice']:.4f}\n")
-            f.write(f"- Total Improvement: {improvement:+.2f}%\n\n")
-        
-        f.write("## Conclusions\n\n")
-        f.write("- Key findings from ablation study\n")
-        f.write("- Best component combination\n")
-        f.write("- Recommendations for production\n")
+        mixup_off = results.get('mixup_off', {})
+        mixup_on = results.get('mixup_on', {})
+
+        if mixup_off and mixup_on:
+            improvement = (mixup_on['dice'] - mixup_off['dice']) / max(mixup_off['dice'], 1e-8) * 100
+            f.write("### Impact of Mixup\n")
+            f.write(f"- No Mixup Dice: {mixup_off['dice']:.4f}\n")
+            f.write(f"- With Mixup Dice: {mixup_on['dice']:.4f}\n")
+            f.write(f"- Relative change: {improvement:+.2f}%\n\n")
+
+        encoder_keys = [k for k in results if k.startswith('encoder_')]
+        if encoder_keys:
+            best_encoder = max(encoder_keys, key=lambda k: results[k]['dice'])
+            f.write("### Impact of ResNet50 Encoder\n")
+            for key in sorted(encoder_keys):
+                f.write(
+                    f"- {results[key]['encoder']}: Dice={results[key]['dice']:.4f}, "
+                    f"IoU={results[key]['iou']:.4f}\n"
+                )
+            f.write(f"- Best encoder setup: {results[best_encoder]['encoder']}\n\n")
+
+        f.write("## Visualization\n\n")
+        f.write("- Qualitative predictions are saved in `results/ablation_study/sample_predictions/`.\n")
     
     print(f"Ablation report saved to {report_path}")
 

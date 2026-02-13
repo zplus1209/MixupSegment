@@ -6,7 +6,21 @@ import segmentation_models_pytorch as smp
 from config import BENCHMARK_MODELS
 
 
-def get_benchmark_model(model_name, encoder_name=None, encoder_weights='imagenet', 
+MODEL_BUILDERS = {
+    'unet': 'Unet',
+    'unetplusplus': 'UnetPlusPlus',
+    'resunetplusplus': 'UnetPlusPlus',
+    'deeplabv3plus': 'DeepLabV3Plus',
+    'fpn': 'FPN',
+    'pspnet': 'PSPNet',
+    'linknet': 'Linknet',
+    'pan': 'PAN',
+    'segformer': 'Segformer',
+    'swin_unet': 'Unet',
+}
+
+
+def get_benchmark_model(model_name, encoder_name=None, encoder_weights='imagenet',
                         in_channels=3, classes=1):
     """
     Get benchmark model for comparison
@@ -21,64 +35,25 @@ def get_benchmark_model(model_name, encoder_name=None, encoder_weights='imagenet
     if encoder_name is None:
         encoder_name = BENCHMARK_MODELS.get(model_name, {}).get('encoder', 'resnet34')
     
-    if model_name == 'unet':
-        model = smp.Unet(
-            encoder_name=encoder_name,
-            encoder_weights=encoder_weights,
-            in_channels=in_channels,
-            classes=classes,
-            activation='sigmoid'
+    if model_name not in MODEL_BUILDERS:
+        raise ValueError(
+            f"Model {model_name} not supported. "
+            f"Choose from: {', '.join(sorted(MODEL_BUILDERS.keys()))}"
         )
     
-    elif model_name == 'deeplabv3plus':
-        model = smp.DeepLabV3Plus(
-            encoder_name=encoder_name,
-            encoder_weights=encoder_weights,
-            in_channels=in_channels,
-            classes=classes,
-            activation='sigmoid'
-        )
-    
-    elif model_name == 'fpn':
-        model = smp.FPN(
-            encoder_name=encoder_name,
-            encoder_weights=encoder_weights,
-            in_channels=in_channels,
-            classes=classes,
-            activation='sigmoid'
-        )
-    
-    elif model_name == 'pspnet':
-        model = smp.PSPNet(
-            encoder_name=encoder_name,
-            encoder_weights=encoder_weights,
-            in_channels=in_channels,
-            classes=classes,
-            activation='sigmoid'
-        )
-    
-    elif model_name == 'linknet':
-        model = smp.Linknet(
-            encoder_name=encoder_name,
-            encoder_weights=encoder_weights,
-            in_channels=in_channels,
-            classes=classes,
-            activation='sigmoid'
-        )
-    
-    elif model_name == 'pan':
-        model = smp.PAN(
-            encoder_name=encoder_name,
-            encoder_weights=encoder_weights,
-            in_channels=in_channels,
-            classes=classes,
-            activation='sigmoid'
-        )
-    
-    else:
-        raise ValueError(f"Model {model_name} not supported. "
-                        f"Choose from: unet, deeplabv3plus, fpn, pspnet, linknet, pan")
-    
+    builder_name = MODEL_BUILDERS[model_name]
+    if not hasattr(smp, builder_name):
+        raise ValueError(f"Model builder {builder_name} unavailable in segmentation_models_pytorch version")
+
+    model_builder = getattr(smp, builder_name)
+    model = model_builder(
+        encoder_name=encoder_name,
+        encoder_weights=encoder_weights,
+        in_channels=in_channels,
+        classes=classes,
+        activation='sigmoid'
+    )
+
     return model
 
 
@@ -90,7 +65,9 @@ def get_all_benchmark_models():
         encoder = config.get('encoder', 'resnet34')
         weights = config.get('encoder_weights', 'imagenet')
         
-        models[f"{model_name}_{encoder}"] = get_benchmark_model(
+        display_name = config.get('display_name', f"{model_name}_{encoder}")
+
+        models[display_name] = get_benchmark_model(
             model_name=model_name,
             encoder_name=encoder,
             encoder_weights=weights
